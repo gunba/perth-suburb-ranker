@@ -7,4 +7,5 @@ module.exports = {
   useTabs: false, // Use spaces instead of tabs
   bracketSpacing: true, // Ensure spaces between brackets
   arrowParens: 'always', // Include parentheses around a sole arrow function parameter
+  endOfLine: "auto",
 }

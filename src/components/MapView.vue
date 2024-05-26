@@ -1,10 +1,13 @@
 <template>
   <div id="app">
+    <!-- Sidebar with controls -->
     <div id="sidebar">
+      <!-- Checkbox to toggle suburb boundaries -->
       <label>
         <input type="checkbox" v-model="showSuburbs" @change="toggleSuburbs" />
         Show Suburb Boundaries
       </label>
+      <!-- Radio buttons for selecting features to display -->
       <label v-for="(label, index) in featureLabels" :key="index">
         <input
           type="radio"
@@ -15,28 +18,131 @@
         {{ label }}
       </label>
     </div>
+    <!-- Container for the map -->
     <div id="map-container"></div>
-    <div id="legend"></div>
   </div>
 </template>
 
-<script>
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
-import JSZip from 'jszip'
-import { toRaw } from 'vue'
+<style>
+#app {
+  display: flex;
+}
 
-let map
+#sidebar {
+  width: 300px;
+  padding: 10px;
+  background: #f7f7f7;
+  border-right: 1px solid #ddd;
+}
+
+#sidebar label {
+  display: block; /* Ensure each checkbox is on a new line */
+  margin-bottom: 5px;
+}
+
+#map-container {
+  height: 100vh;
+  width: calc(100% - 300px);
+}
+
+.suburb-label {
+  font-size: 14px;
+  font-family: 'Arial, Helvetica, sans-serif';
+  color: #000;
+  background: #fff;
+  border: 1px solid #ccc;
+  padding: 2px;
+}
+
+path.leaflet-interactive:focus {
+  outline: none;
+}
+
+.leaflet-container .greyscale {
+  filter: grayscale(100%);
+}
+
+.leaflet-top.leaflet-left {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.leaflet-control-zoom {
+  margin-right: 120px; /* Adjust as needed for spacing between controls and legend */
+}
+
+.info.legend {
+  background: white;
+  padding: 6px 8px;
+  font:
+    14px/16px Arial,
+    Helvetica,
+    sans-serif;
+  border-radius: 10px;
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+  transform: translateX(-50%); /* Center alignment correction */
+  z-index: 1000; /* Ensure it appears above other elements */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 220px; /* Set the minimum width for the legend */
+  min-height: 52px;
+}
+
+.info.legend .title {
+  font-weight: bold;
+  font-size: 16px; /* Adjust the font size as needed */
+  color: #333; /* Adjust the color as needed */
+}
+
+.info.legend .gradient-container {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.info.legend .gradient-bar {
+  flex-grow: 1;
+  height: 20px;
+  background: linear-gradient(
+    to right,
+    yellow,
+    red
+  ); /* Adjust colors as needed */
+  margin: 0 10px;
+}
+
+.info.legend .min-value {
+  font-size: 12px;
+  color: #333;
+}
+
+.info.legend .max-value {
+  font-size: 12px;
+  color: #333;
+}
+</style>
+
+<script>
+import L from 'leaflet' // Importing Leaflet library for map functionality
+import 'leaflet/dist/leaflet.css' // Importing Leaflet CSS for styling
+import JSZip from 'jszip' // Importing JSZip library for handling ZIP files
+import { toRaw } from 'vue' // Importing toRaw utility from Vue.js
+
+let map // Declare the map variable
 
 export default {
   data() {
     return {
-      geojsonLayer: null,
-      showSuburbs: true,
-      selectedSuburb: null,
-      suburbData: null,
-      selectedFeature: null,
+      geojsonLayer: null, // Layer to hold GeoJSON data
+      showSuburbs: true, // Flag to show/hide suburb boundaries
+      selectedSuburb: null, // Currently selected suburb
+      suburbData: null, // Data for all suburbs
+      selectedFeature: null, // Currently selected feature
       featureLabels: [
+        // Labels for the features to display
         'Crime per capita',
         'Crime trend',
         'Population density',
@@ -51,46 +157,53 @@ export default {
         'Suburb sales growth',
         'Suburb interest level',
       ],
-      averages: {},
-      ranks: {},
+      averages: {}, // Object to hold average values for features
+      ranks: {}, // Object to hold rank values for features
     }
   },
+
   mounted() {
-    this.loadZipData()
+    this.loadZipData() // Load the ZIP data when the component is mounted
   },
+
   methods: {
+    // Method to load ZIP data
     async loadZipData() {
-      const response = await fetch('data.zip')
-      const blob = await response.blob()
-      const zip = await JSZip.loadAsync(blob)
+      const response = await fetch('data.zip') // Fetch the ZIP file
+      const blob = await response.blob() // Convert the response to a blob
+      const zip = await JSZip.loadAsync(blob) // Load the blob as a ZIP file
 
-      const suburbDataFile = await zip.file('suburb_data.json').async('string')
-      this.suburbData = JSON.parse(suburbDataFile)
+      const suburbDataFile = await zip.file('suburb_data.json').async('string') // Extract the JSON file from the ZIP
+      this.suburbData = JSON.parse(suburbDataFile) // Parse the JSON file and store it in suburbData
 
-      this.calculateAverages()
-      this.calculateRanks()
-      this.initMap()
+      this.calculateAverages() // Calculate averages for features
+      this.calculateRanks() // Calculate ranks for features
+      this.initMap() // Initialize the map
     },
+
+    // Method to initialize the map
     initMap() {
-      map = L.map('map-container').setView([-31.9505, 115.8605], 13)
+      map = L.map('map-container').setView([-31.9505, 115.8605], 13) // Create the map centered on specified coordinates
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution:
           '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        className: 'greyscale',
+        className: 'greyscale', // Greyscale the map tiles
       }).addTo(map)
 
-      const geojsonData = this.convertToGeoJSON(this.suburbData)
+      const geojsonData = this.convertToGeoJSON(this.suburbData) // Convert suburb data to GeoJSON format
       this.geojsonLayer = L.geoJSON(geojsonData, {
         onEachFeature: (feature, layer) => {
           layer.on({
-            click: this.onSuburbClick,
-            mouseover: this.onSuburbMouseover,
-            mouseout: this.onSuburbMouseout,
+            click: this.onSuburbClick, // Click event handler
+            mouseover: this.onSuburbMouseover, // Mouseover event handler
+            mouseout: this.onSuburbMouseout, // Mouseout event handler
           })
         },
-        style: () => ({ color: '#3388ff', weight: 3, fillOpacity: 0 }),
+        style: () => ({ color: '#3388ff', weight: 3, fillOpacity: 0 }), // Style for the GeoJSON layer
       }).addTo(toRaw(map))
     },
+
+    // Method to convert suburb data to GeoJSON format
     convertToGeoJSON(suburbData) {
       const features = Object.keys(suburbData).map((key) => {
         const coordinates = suburbData[key].abs_coordinates.map((coords) =>
@@ -115,28 +228,42 @@ export default {
         features,
       }
     },
+
+    // Method to toggle the display of suburb boundaries
     toggleSuburbs() {
       this.selectedFeature = null
       if (this.showSuburbs) {
         this.geojsonLayer.setStyle({
-          color: '#3388ff',
-          weight: 3,
           fillOpacity: 0,
         })
       } else {
         this.geojsonLayer.setStyle({ fillOpacity: 0 })
       }
     },
+
+    // Method to handle suburb click event
     onSuburbClick(e) {
       const layer = e.target
 
+      // Check if there is a previously selected suburb and reset its style
       if (this.selectedSuburb) {
-        this.selectedSuburb.setStyle({ fillOpacity: 0 })
+        this.selectedSuburb.setStyle({ color: '', weight: 0 })
       }
 
-      layer.setStyle({ fillOpacity: 0.5 })
+      // Set the style for the newly selected suburb
+      layer.setStyle({ color: 'red', weight: 5 })
+
+      // Update the selectedSuburb reference
       this.selectedSuburb = layer
     },
+
+    resetSuburbStyle(layer) {
+      if (this.showSuburbs) {
+        layer.setStyle({ fillOpacity: 0 })
+      }
+    },
+
+    // Method to handle suburb mouseover event
     onSuburbMouseover(e) {
       const layer = e.target
       const props = layer.feature.properties
@@ -157,6 +284,7 @@ export default {
       let value
       let rank
 
+      // Determine the value and rank based on the selected feature
       switch (featureIndex) {
         case 0:
           value =
@@ -224,6 +352,7 @@ export default {
           rank = null
       }
 
+      // Display the tooltip with the suburb name, value, and rank
       if (value !== null) {
         layer
           .bindTooltip(
@@ -239,9 +368,11 @@ export default {
           .openTooltip()
       }
     },
+    // Method to handle suburb mouseout event
     onSuburbMouseout(e) {
       e.target.closeTooltip()
     },
+    // Method to calculate average values for features
     calculateAverages() {
       const total = {
         crimePerCapita: 0,
@@ -260,6 +391,7 @@ export default {
       }
       let count = 0
 
+      // Calculate total values for each feature
       Object.values(this.suburbData).forEach((data) => {
         total.crimePerCapita +=
           (data.wapol_total_person_crime + data.wapol_total_property_crime) /
@@ -285,6 +417,7 @@ export default {
         count += 1
       })
 
+      // Calculate average values for each feature
       this.averages = {
         crimePerCapita: total.crimePerCapita / count,
         crimeTrend: total.crimeTrend / count,
@@ -301,6 +434,7 @@ export default {
         suburbInterest: total.suburbInterest / count,
       }
     },
+    // Method to calculate rank values for features
     calculateRanks() {
       const featureValues = {
         crimePerCapita: [],
@@ -318,6 +452,7 @@ export default {
         suburbInterest: [],
       }
 
+      // Populate featureValues with data for each feature
       Object.entries(this.suburbData).forEach(([key, data]) => {
         featureValues.crimePerCapita.push({
           name: key,
@@ -377,14 +512,16 @@ export default {
         })
       })
 
+      // Calculate ranks for each feature
       Object.keys(featureValues).forEach((feature) => {
-        featureValues[feature].sort((a, b) => a.value - b.value)
+        featureValues[feature].sort((a, b) => b.value - a.value)
         this.ranks[feature] = {}
         featureValues[feature].forEach((item, index) => {
           this.ranks[feature][item.name] = index + 1
         })
       })
     },
+    // Method to update the feature displayed on the map
     updateFeature() {
       this.showSuburbs = false
       const featureIndex = this.selectedFeature
@@ -410,19 +547,19 @@ export default {
       }
 
       const colorScales = [
-        ['#0000ff', '#ff0000'], // Crime per capita
-        ['#0000ff', '#ff0000'], // Crime trend
-        ['#ffeda0', '#f03b20'], // Population density
-        ['#feb24c', '#f03b20'], // Gender ratio
-        ['#c7e9b4', '#081d58'], // Median age
-        ['#deebf7', '#3182bd'], // Median income
-        ['#e0ecf4', '#8856a7'], // Australian born
-        ['#a6bddb', '#2b8cbe'], // Only English used at home
-        ['#fed976', '#fc4e2a'], // Participation in labour force
-        ['#ffeda0', '#f03b20'], // Home ownership
-        ['#dadaeb', '#6a51a3'], // Median house price
-        ['#fa9fb5', '#c51b8a'], // Suburb sales growth
-        ['#e7e1ef', '#dd1c77'], // Suburb interest level
+        ['#004085', '#cce5ff'], // Crime per capita (dark blue to light blue)
+        ['#004085', '#cce5ff'], // Crime trend (dark blue to light blue)
+        ['#f03b20', '#ffeda0'], // Population density (dark red to light yellow)
+        ['#b22200', '#ffebcc'], // Gender ratio (dark red to light orange)
+        ['#005824', '#e7f2e9'], // Median age (dark green to light green)
+        ['#08306b', '#e0ecf4'], // Median income (dark blue to light blue)
+        ['#2a004e', '#ece7f2'], // Australian born (dark purple to light purple)
+        ['#08306b', '#deebf7'], // Only English used at home (dark blue to light blue)
+        ['#d7301f', '#fff5eb'], // Participation in labour force (dark red to light orange)
+        ['#b30000', '#fef0d9'], // Home ownership (dark red to light pink)
+        ['#54278f', '#f2f0f7'], // Median house price (dark purple to light purple)
+        ['#980043', '#fdd0a2'], // Suburb sales growth (dark pink to light pink)
+        ['#7a0177', '#f7f4f9'], // Suburb interest level (dark purple to light purple)
       ]
 
       const feature = featureMap[featureIndex]
@@ -477,36 +614,49 @@ export default {
         }
       })
 
-      this.updateLegend(min, max, lowColor, highColor)
+      this.updateLegend(
+        min,
+        max,
+        lowColor,
+        highColor,
+        this.featureLabels[featureIndex]
+      )
     },
-    updateLegend(min, max, lowColor, highColor) {
-      const interpolateColor = (ratio) => {
-        const r = Math.ceil(
-          parseInt(lowColor.slice(1, 3), 16) * (1 - ratio) +
-            parseInt(highColor.slice(1, 3), 16) * ratio
-        )
-        const g = Math.ceil(
-          parseInt(lowColor.slice(3, 5), 16) * (1 - ratio) +
-            parseInt(highColor.slice(3, 5), 16) * ratio
-        )
-        const b = Math.ceil(
-          parseInt(lowColor.slice(5, 7), 16) * (1 - ratio) +
-            parseInt(highColor.slice(5, 7), 16) * ratio
-        )
-        return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
-      }
-
+    // Method to update the legend on the map
+    updateLegend(min, max, lowColor, highColor, featureLabel) {
       const createLegend = () => {
         const div = L.DomUtil.create('div', 'info legend')
-        const grades = [min, (min + max) / 2, max]
-        const labels = []
 
-        grades.forEach((grade, index) => {
-          const color = interpolateColor(index / (grades.length - 1))
-          labels.push(`<i style="background:${color}"></i> ${grade}`)
-        })
+        // Create the title div
+        const titleDiv = L.DomUtil.create('div', 'title', div)
+        titleDiv.innerText = featureLabel // Set the title text
 
-        div.innerHTML = labels.join('<br>')
+        // Create the gradient bar container
+        const gradientContainer = L.DomUtil.create(
+          'div',
+          'gradient-container',
+          div
+        )
+
+        // Create labels for the min and max values
+        const minValueLabel = L.DomUtil.create(
+          'div',
+          'min-value',
+          gradientContainer
+        )
+        minValueLabel.innerText = min
+
+        // Create the gradient bar
+        const gradientBar = L.DomUtil.create('div', 'gradient-bar')
+        gradientBar.style.background = `linear-gradient(to right, ${lowColor}, ${highColor})` // Set gradient colors
+        gradientContainer.appendChild(gradientBar)
+
+        const maxValueLabel = L.DomUtil.create(
+          'div',
+          'max-value',
+          gradientContainer
+        )
+        maxValueLabel.innerText = max
         return div
       }
 
@@ -514,69 +664,10 @@ export default {
         map.removeControl(this.legend)
       }
 
-      this.legend = L.control({ position: 'bottomright' })
+      this.legend = L.control({ position: 'topleft' })
       this.legend.onAdd = createLegend
       this.legend.addTo(map)
     },
   },
 }
 </script>
-
-<style>
-#app {
-  display: flex;
-}
-
-#sidebar {
-  width: 300px;
-  padding: 10px;
-  background: #f7f7f7;
-  border-right: 1px solid #ddd;
-}
-
-#sidebar label {
-  display: block; /* Ensure each checkbox is on a new line */
-  margin-bottom: 5px;
-}
-
-#map-container {
-  height: 100vh;
-  width: calc(100% - 300px);
-}
-
-.suburb-label {
-  font-size: 14px;
-  font-family: 'Arial, Helvetica, sans-serif';
-  color: #000;
-  background: #fff;
-  border: 1px solid #ccc;
-  padding: 2px;
-}
-
-path.leaflet-interactive:focus {
-  outline: none;
-}
-
-.leaflet-container .greyscale {
-  filter: grayscale(100%);
-}
-
-.info.legend {
-  background: white;
-  padding: 6px 8px;
-  font:
-    14px/16px Arial,
-    Helvetica,
-    sans-serif;
-  border-radius: 5px;
-  box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
-}
-
-.info.legend i {
-  width: 18px;
-  height: 18px;
-  float: left;
-  margin-right: 8px;
-  opacity: 0.7;
-}
-</style>
