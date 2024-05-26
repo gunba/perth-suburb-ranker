@@ -13,10 +13,14 @@
           >Show Suburb Boundaries</label
         >
       </div>
-      <div v-for="(feature, index) in features" :key="index" class="form-check">
+      <div
+        v-for="(feature, index) in predefinedFeatures"
+        :key="index"
+        class="form-check"
+      >
         <input
           type="radio"
-          :value="index"
+          :value="feature.key"
           v-model="selectedFeature"
           @change="updateFeature"
           class="form-check-input"
@@ -256,174 +260,75 @@ path.leaflet-interactive:focus {
 </style>
 
 <script>
-import L from 'leaflet' // Importing Leaflet library for map functionality
-import 'leaflet/dist/leaflet.css' // Importing Leaflet CSS for styling
-import JSZip from 'jszip' // Importing JSZip library for handling ZIP files
-import { toRaw } from 'vue' // Importing toRaw utility from Vue.js
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
+import JSZip from 'jszip'
+import { toRaw } from 'vue'
 
-let map // Declare the map variable
+let map
 
 export default {
   data() {
     return {
-      geojsonLayer: null, // Layer to hold GeoJSON data
-      showSuburbs: true, // Flag to show/hide suburb boundaries
-      selectedSuburb: null, // Currently selected suburb
-      suburbData: null, // Data for all suburbs
-      selectedFeature: null, // Currently selected feature
-      averages: {}, // Object to hold average values for features
-      ranks: {}, // Object to hold rank values for features
-      selectedDynamicFeature: null, // Currently selected dynamic feature
-      allFeatureLabels: {}, // Labels for all features
-      // Define the Feature Object
-      features: [
-        {
-          name: 'crimePerCapita',
-          label: 'Crime per capita',
-          calc: (props) =>
-            (props.wapol_total_person_crime +
-              props.wapol_total_property_crime) /
-            props.abs_people,
-          minColor: '#004085',
-          maxColor: '#cce5ff',
-        },
-        {
-          name: 'crimeTrend',
-          label: 'Crime trend',
-          calc: (props) =>
-            (props.wapol_total_person_crime +
-              props.wapol_total_property_crime) /
-            (props.wapol_avg_person_crime_prev_3y +
-              props.wapol_avg_property_crime_prev_3y),
-          minColor: '#004085',
-          maxColor: '#cce5ff',
-        },
-        {
-          name: 'populationDensity',
-          label: 'Population density',
-          calc: (props) => props.abs_people / props.abs_area_km2,
-          minColor: '#f03b20',
-          maxColor: '#ffeda0',
-        },
-        {
-          name: 'genderRatio',
-          label: 'Gender ratio',
-          calc: (props) => props.abs_male_ratio,
-          minColor: '#b22200',
-          maxColor: '#ffebcc',
-        },
-        {
-          name: 'medianAge',
-          label: 'Median age',
-          calc: (props) => props.abs_median_age,
-          minColor: '#005824',
-          maxColor: '#e7f2e9',
-        },
-        {
-          name: 'medianIncome',
-          label: 'Median income',
-          calc: (props) => props.abs_median_weekly_household_income,
-          minColor: '#08306b',
-          maxColor: '#e0ecf4',
-        },
-        {
-          name: 'australianBorn',
-          label: 'Australian born',
-          calc: (props) =>
-            props.abs_sub_country_of_birth_top_responses_australia_pct,
-          minColor: '#2a004e',
-          maxColor: '#ece7f2',
-        },
-        {
-          name: 'englishAtHome',
-          label: 'Only English used at home',
-          calc: (props) =>
-            props.abs_sub_language_used_at_home_top_responses_english_only_used_at_home_pct,
-          minColor: '#08306b',
-          maxColor: '#deebf7',
-        },
-        {
-          name: 'labourForce',
-          label: 'Participation in labour force',
-          calc: (props) =>
-            props.abs_sub_participation_in_the_labour_force_in_the_labour_force_pct,
-          minColor: '#d7301f',
-          maxColor: '#fff5eb',
-        },
-        {
-          name: 'homeOwnership',
-          label: 'Home ownership',
-          calc: (props) => props.abs_sub_tenure_type_owned_outright_pct,
-          minColor: '#b30000',
-          maxColor: '#fef0d9',
-        },
-        {
-          name: 'medianHousePrice',
-          label: 'Median house price',
-          calc: (props) => props.reiwa_median_house_sale,
-          minColor: '#54278f',
-          maxColor: '#f2f0f7',
-        },
-        {
-          name: 'salesGrowth',
-          label: 'Suburb sales growth',
-          calc: (props) => props.reiwa_sales_growth,
-          minColor: '#980043',
-          maxColor: '#fdd0a2',
-        },
-        {
-          name: 'suburbInterest',
-          label: 'Suburb interest level',
-          calc: (props) => props.reiwa_suburb_interest_level,
-          minColor: '#7a0177',
-          maxColor: '#f7f4f9',
-        },
+      geojsonLayer: null,
+      showSuburbs: true,
+      selectedSuburb: null,
+      suburbData: null,
+      selectedFeature: null,
+      selectedDynamicFeature: null,
+      allFeatureLabels: {},
+      predefinedFeatures: [
+        { key: 'crimePerCapita', label: 'Crime per capita' },
+        { key: 'populationDensity', label: 'Population density' },
+        { key: 'medianIncome', label: 'Median income' },
       ],
+      featureRanks: {}, // Added to store precomputed ranks
     }
   },
 
   mounted() {
-    this.loadZipData() // Load the ZIP data when the component is mounted
+    this.loadZipData()
   },
 
   methods: {
-    // Method to load ZIP data
     async loadZipData() {
-      const response = await fetch('data.zip') // Fetch the ZIP file
-      const blob = await response.blob() // Convert the response to a blob
-      const zip = await JSZip.loadAsync(blob) // Load the blob as a ZIP file
+      const response = await fetch('data.zip')
+      const blob = await response.blob()
+      const zip = await JSZip.loadAsync(blob)
 
-      const suburbDataFile = await zip.file('suburb_data.json').async('string') // Extract the JSON file from the ZIP
-      this.suburbData = JSON.parse(suburbDataFile) // Parse the JSON file and store it in suburbData
+      const suburbDataFile = await zip.file('suburb_data.json').async('string')
+      this.suburbData = JSON.parse(suburbDataFile)
 
-      this.calculateAveragesAndRanks() // Calculate averages for features Calculate ranks for features
-      this.populateFeatureLabels() // Populate feature labels dropdown
-      this.initMap() // Initialize the map
+      // Exclude Kings Park
+      delete this.suburbData['Kings Park']
+
+      this.calculatePredefinedFeatures()
+      this.populateFeatureLabels()
+      this.precomputeFeatureRanks() // Precompute ranks
+      this.initMap()
     },
 
-    // Method to initialize the map
     initMap() {
-      map = L.map('map-container').setView([-31.9505, 115.8605], 13) // Create the map centered on specified coordinates
+      map = L.map('map-container').setView([-31.9505, 115.8605], 13)
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution:
           '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        className: 'greyscale', // Greyscale the map tiles
+        className: 'greyscale',
       }).addTo(map)
 
-      const geojsonData = this.convertToGeoJSON(this.suburbData) // Convert suburb data to GeoJSON format
+      const geojsonData = this.convertToGeoJSON(this.suburbData)
       this.geojsonLayer = L.geoJSON(geojsonData, {
         onEachFeature: (feature, layer) => {
           layer.on({
-            click: this.onSuburbClick, // Click event handler
-            mouseover: this.onSuburbMouseover, // Mouseover event handler
-            mouseout: this.onSuburbMouseout, // Mouseout event handler
+            click: this.onSuburbClick,
+            mouseover: this.onSuburbMouseover,
+            mouseout: this.onSuburbMouseout,
           })
         },
-        style: () => ({ fillOpacity: 0, color: 'blue', weight: 1 }), // Style for the GeoJSON layer
+        style: () => ({ fillOpacity: 0, color: 'blue', weight: 1 }),
       }).addTo(toRaw(map))
     },
 
-    // Method to convert suburb data to GeoJSON format
     convertToGeoJSON(suburbData) {
       const geoFeatures = Object.keys(suburbData).map((key) => {
         const coordinates = suburbData[key].abs_coordinates.map((coords) =>
@@ -449,12 +354,8 @@ export default {
       }
     },
 
-    // Method to toggle the display of suburb boundaries
     toggleSuburbs() {
       this.selectedFeature = null
-      if (this.legend) {
-        map.removeControl(this.legend)
-      }
       if (this.showSuburbs) {
         this.geojsonLayer.setStyle({
           fillOpacity: 0,
@@ -470,63 +371,42 @@ export default {
       }
     },
 
-    // Method to handle suburb click event
     onSuburbClick(e) {
       const layer = e.target
 
-      // Check if there is a previously selected suburb and reset its style
       if (this.selectedSuburb) {
         this.selectedSuburb.setStyle({ color: '', weight: 0 })
       }
 
-      // Set the style for the newly selected suburb
       layer.setStyle({ color: 'red', weight: 5 })
 
-      // Update the selectedSuburb reference
       this.selectedSuburb = layer
     },
 
-    resetSuburbStyle(layer) {
-      if (this.showSuburbs) {
-        layer.setStyle({ fillOpacity: 0 })
-      }
-    },
-
-    // Method to handle suburb mouseover event
     onSuburbMouseover(e) {
       const layer = e.target
       const props = layer.feature.properties
-      const featureIndex = this.selectedFeature
-      const dynamicFeature = this.selectedDynamicFeature
+      const featureKey = this.selectedFeature || this.selectedDynamicFeature
 
-      if (featureIndex === null && !dynamicFeature) {
+      if (!featureKey) {
         this.showTooltip(layer, `${props.name}`)
         return
       }
 
-      let feature
-      let value
-      let rank
-      if (featureIndex !== null) {
-        feature = this.features[featureIndex]
-        value = feature.calc(props)
-        rank = this.ranks[feature.name][props.name]
-      } else {
-        feature = {
-          name: dynamicFeature,
-          label: this.allFeatureLabels[dynamicFeature],
-        }
-        value = props[dynamicFeature]
-        rank = this.calculateDynamicRanks(feature.name)[props.name]
-      }
+      const value = props[featureKey]
+      const rank = this.featureRanks[featureKey][props.name]
 
       if (value === undefined) {
         return
       }
 
+      const rankColor = this.getRankColor(rank)
+      const totalSuburbs = Object.keys(this.featureRanks[featureKey]).length
+      const percentile = ((totalSuburbs - rank + 1) / totalSuburbs) * 100
+
       this.showTooltip(
         layer,
-        `${props.name}. ${feature.label}: ${this.formatValue(value)} (Rank: ${rank})`
+        `<strong>${props.name}</strong><br>${this.getFeatureLabel(featureKey)}: ${this.formatValue(value)}<br><span style="color: ${rankColor};">%ile: ${percentile.toFixed(2)} (Rank: ${rank})</span>`
       )
     },
 
@@ -541,55 +421,47 @@ export default {
     },
 
     formatValue(value) {
-      return value !== null && !Number.isNaN(value) ? value.toFixed(2) : 'N/A'
+      if (value === null || Number.isNaN(value)) return 'N/A'
+      if (value >= 1000) return value.toFixed(0)
+      if (value >= 1) return value.toFixed(2)
+      return value.toFixed(4)
     },
 
-    // Method to calculate average values for features
-    calculateAveragesAndRanks() {
-      const totals = this.features.reduce((acc, feature) => {
-        acc[feature.name] = 0
-        return acc
-      }, {})
-
-      const featureValues = this.features.reduce((acc, feature) => {
-        acc[feature.name] = []
-        return acc
-      }, {})
-
-      let count = 0
-
-      Object.entries(this.suburbData).forEach(([key, data]) => {
-        this.features.forEach((feature) => {
-          const value = feature.calc(data)
-          totals[feature.name] += value
-          featureValues[feature.name].push({
-            name: key,
-            value,
-          })
-        })
-        count += 1
-      })
-
-      this.averages = this.features.reduce((acc, feature) => {
-        acc[feature.name] = totals[feature.name] / count
-        return acc
-      }, {})
-
-      this.features.forEach((feature) => {
-        featureValues[feature.name].sort((a, b) => b.value - a.value)
-        this.ranks[feature.name] = {}
-        featureValues[feature.name].forEach((item, index) => {
-          this.ranks[feature.name][item.name] = index + 1
-        })
+    calculatePredefinedFeatures() {
+      Object.keys(this.suburbData).forEach((key) => {
+        const data = this.suburbData[key]
+        this.suburbData[key].crimePerCapita =
+          (data.wapol_total_person_crime + data.wapol_total_property_crime) /
+          data.abs_people
+        this.suburbData[key].populationDensity =
+          data.abs_people / data.abs_area_km2
+        this.suburbData[key].medianIncome =
+          data.abs_median_weekly_household_income
       })
     },
 
-    calculateDynamicRanks(featureName) {
+    precomputeFeatureRanks() {
+      this.featureRanks = this.predefinedFeatures.reduce((acc, feature) => {
+        acc[feature.key] = this.calculateRanks(feature.key)
+        return acc
+      }, {})
+
+      // Add dynamic features if needed
+      Object.keys(this.suburbData[Object.keys(this.suburbData)[0]]).forEach(
+        (key) => {
+          if (!this.featureRanks[key]) {
+            this.featureRanks[key] = this.calculateRanks(key)
+          }
+        }
+      )
+    },
+
+    calculateRanks(featureKey) {
       const featureValues = Object.entries(this.suburbData)
-        .filter(([, data]) => data[featureName] !== undefined) // Filter out undefined values
+        .filter(([, data]) => data[featureKey] !== undefined)
         .map(([key, data]) => ({
           name: key,
-          value: data[featureName],
+          value: data[featureKey],
         }))
 
       featureValues.sort((a, b) => b.value - a.value)
@@ -602,43 +474,43 @@ export default {
       return ranks
     },
 
-    // Method to update the feature displayed on the map
     updateFeature() {
       this.showSuburbs = false
-      const featureIndex = this.selectedFeature
+      this.updateFeatureDisplay(this.selectedFeature)
+    },
 
-      if (featureIndex === null && !this.selectedDynamicFeature) {
+    updateDynamicFeature() {
+      this.selectedFeature = null
+      this.updateFeatureDisplay(this.selectedDynamicFeature)
+    },
+
+    updateFeatureDisplay(featureKey) {
+      if (!featureKey) {
         this.geojsonLayer.setStyle(() => ({ fillOpacity: 0 }))
         return
       }
 
-      let feature
-      let featureRanks
-      if (featureIndex !== null) {
-        feature = this.features[featureIndex]
-        featureRanks = this.ranks[feature.name]
-      } else {
-        feature = {
-          name: this.selectedDynamicFeature,
-          label: this.allFeatureLabels[this.selectedDynamicFeature],
-          calc: (props) => props[this.selectedDynamicFeature],
-          minColor: '#004085', // Use default colors or create a dynamic color scheme
-          maxColor: '#cce5ff',
-        }
-        featureRanks = this.calculateDynamicRanks(feature.name)
-      }
+      const featureRanks = this.featureRanks[featureKey]
 
       if (!featureRanks) {
-        console.error(`No data available for feature: ${feature.name}`)
+        console.error(`No data available for feature: ${featureKey}`)
         return
       }
 
-      const min = Math.min(...Object.values(featureRanks))
-      const max = Math.max(...Object.values(featureRanks))
-      const { minColor, maxColor } = feature
+      const suburbValues = Object.values(this.suburbData)
+        .map((d) => d[featureKey])
+        .filter((value) => value !== undefined)
 
-      const getColor = (value) => {
-        const valueRatio = (value - min) / (max - min)
+      const min = Math.min(...suburbValues)
+      const max = Math.max(...suburbValues)
+      const avg = suburbValues.reduce((a, b) => a + b, 0) / suburbValues.length
+
+      const totalSuburbs = Object.keys(this.featureRanks[featureKey]).length
+      const minColor = '#cce5ff' // Light color
+      const maxColor = '#004085' // Dark color
+
+      const getColor = (percentile) => {
+        const valueRatio = percentile / 100
         const interpolate = (start, end, ratio) =>
           Math.round(start + (end - start) * ratio)
         const r = interpolate(
@@ -664,8 +536,9 @@ export default {
         const rank = featureRanks[props.name]
 
         if (rank !== undefined) {
+          const percentile = ((totalSuburbs - rank + 1) / totalSuburbs) * 100
           layer.setStyle({
-            fillColor: getColor(rank),
+            fillColor: getColor(percentile),
             fillOpacity: 0.7,
             color: 'none',
           })
@@ -677,42 +550,49 @@ export default {
         }
       })
 
-      this.updateLegend(min, max, minColor, maxColor, feature.label)
+      const featureSuburbsCount = suburbValues.length
+
+      this.updateLegend(
+        min,
+        max,
+        avg,
+        minColor,
+        maxColor,
+        this.getFeatureLabel(featureKey),
+        featureSuburbsCount
+      )
     },
 
-    // Method to update dynamic feature
-    updateDynamicFeature() {
-      this.selectedFeature = null
-      this.updateFeature()
-    },
-
-    // Method to update the legend on the map
-    updateLegend(min, max, lowColor, highColor, featureLabel) {
+    updateLegend(
+      minValue,
+      maxValue,
+      avgValue,
+      lowColor,
+      highColor,
+      featureLabel,
+      count
+    ) {
       const createLegend = () => {
         const div = L.DomUtil.create('div', 'info legend')
 
-        // Create the title div
         const titleDiv = L.DomUtil.create('div', 'title', div)
-        titleDiv.innerText = featureLabel // Set the title text
+        titleDiv.innerHTML = `${featureLabel} <br>(${count} suburbs, Avg: ${this.formatValue(avgValue)})`
 
-        // Create the gradient bar container
         const gradientContainer = L.DomUtil.create(
           'div',
           'gradient-container',
           div
         )
 
-        // Create labels for the min and max values
         const minValueLabel = L.DomUtil.create(
           'div',
           'min-value',
           gradientContainer
         )
-        minValueLabel.innerText = min
+        minValueLabel.innerText = this.formatValue(minValue)
 
-        // Create the gradient bar
         const gradientBar = L.DomUtil.create('div', 'gradient-bar')
-        gradientBar.style.background = `linear-gradient(to right, ${lowColor}, ${highColor})` // Set gradient colors
+        gradientBar.style.background = `linear-gradient(to right, ${lowColor}, ${highColor})`
         gradientContainer.appendChild(gradientBar)
 
         const maxValueLabel = L.DomUtil.create(
@@ -720,7 +600,8 @@ export default {
           'max-value',
           gradientContainer
         )
-        maxValueLabel.innerText = max
+        maxValueLabel.innerText = this.formatValue(maxValue)
+
         return div
       }
 
@@ -733,17 +614,37 @@ export default {
       this.legend.addTo(map)
     },
 
-    // Create dynamic feature labels based on suburb data
     populateFeatureLabels() {
       this.allFeatureLabels = {}
       const sampleSuburb = Object.values(this.suburbData)[0]
       if (sampleSuburb) {
         Object.keys(sampleSuburb).forEach((key) => {
-          if (!this.features.some((feature) => feature.name === key)) {
-            this.allFeatureLabels[key] = key // Directly use the key as the label
+          if (!this.predefinedFeatures.some((feature) => feature.key === key)) {
+            this.allFeatureLabels[key] = key
           }
         })
       }
+    },
+
+    getFeatureLabel(featureKey) {
+      const predefinedFeature = this.predefinedFeatures.find(
+        (feature) => feature.key === featureKey
+      )
+      return predefinedFeature
+        ? predefinedFeature.label
+        : this.allFeatureLabels[featureKey]
+    },
+
+    getRankColor(rank) {
+      const totalRanks = Object.keys(this.suburbData).length
+      const percentile = ((totalRanks - rank + 1) / totalRanks) * 100
+      if (percentile === 100) return '#e5cc80' // 100 percentile
+      if (percentile >= 99) return '#e268a8' // Sub 100 percentile
+      if (percentile >= 95) return '#ff8000' // Sub 99 percentile
+      if (percentile >= 75) return '#a335ee' // Sub 95 percentile
+      if (percentile >= 50) return '#0070ff' // Sub 75 percentile
+      if (percentile >= 25) return '#1eff00' // Sub 50 percentile
+      return '#666' // Sub 25 percentile
     },
   },
 }
