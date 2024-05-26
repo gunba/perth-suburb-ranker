@@ -286,7 +286,7 @@ export default {
             mouseout: this.onSuburbMouseout, // Mouseout event handler
           })
         },
-        style: () => ({ color: '#3388ff', weight: 3, fillOpacity: 0 }), // Style for the GeoJSON layer
+        style: () => ({ fillOpacity: 0, color: 'blue', weight: 1 }), // Style for the GeoJSON layer
       }).addTo(toRaw(map))
     },
 
@@ -319,12 +319,21 @@ export default {
     // Method to toggle the display of suburb boundaries
     toggleSuburbs() {
       this.selectedFeature = null
+      if (this.legend) {
+        map.removeControl(this.legend)
+      }
       if (this.showSuburbs) {
         this.geojsonLayer.setStyle({
           fillOpacity: 0,
+          color: 'blue',
+          weight: 1,
         })
       } else {
-        this.geojsonLayer.setStyle({ fillOpacity: 0 })
+        this.geojsonLayer.setStyle({
+          fillOpacity: 0,
+          color: 'blue',
+          weight: 0,
+        })
       }
     },
 
@@ -351,6 +360,8 @@ export default {
     },
 
     // Method to handle suburb mouseover event
+    // Method to handle suburb mouseover event
+    // Method to handle suburb mouseover event
     onSuburbMouseover(e) {
       const layer = e.target
       const props = layer.feature.properties
@@ -371,7 +382,7 @@ export default {
       const value = feature.calc(props)
       const rank = this.ranks[feature.name][props.name]
 
-      if (value !== null) {
+      if (value !== null && !Number.isNaN(value)) {
         layer
           .bindTooltip(
             `${props.name}. ${feature.label}: ${value.toFixed(2)} (Rank: ${rank})`,
@@ -381,6 +392,15 @@ export default {
               className: 'suburb-label',
             }
           )
+          .openTooltip()
+      } else {
+        // Handle the case where value is not a number
+        layer
+          .bindTooltip(`${props.name}. ${feature.label}: N/A (Rank: ${rank})`, {
+            permanent: false,
+            direction: 'center',
+            className: 'suburb-label',
+          })
           .openTooltip()
       }
     },
