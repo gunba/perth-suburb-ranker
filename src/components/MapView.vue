@@ -8,14 +8,14 @@
         Show Suburb Boundaries
       </label>
       <!-- Radio buttons for selecting features to display -->
-      <label v-for="(label, index) in featureLabels" :key="index">
+      <label v-for="(feature, index) in features" :key="index">
         <input
           type="radio"
           :value="index"
           v-model="selectedFeature"
           @change="updateFeature"
         />
-        {{ label }}
+        {{ feature.label }}
       </label>
     </div>
     <!-- Container for the map -->
@@ -141,24 +141,112 @@ export default {
       selectedSuburb: null, // Currently selected suburb
       suburbData: null, // Data for all suburbs
       selectedFeature: null, // Currently selected feature
-      featureLabels: [
-        // Labels for the features to display
-        'Crime per capita',
-        'Crime trend',
-        'Population density',
-        'Gender ratio',
-        'Median age',
-        'Median income',
-        'Australian born',
-        'Only English used at home',
-        'Participation in labour force',
-        'Home ownership',
-        'Median house price',
-        'Suburb sales growth',
-        'Suburb interest level',
-      ],
       averages: {}, // Object to hold average values for features
       ranks: {}, // Object to hold rank values for features
+      // Define the Feature Object
+      features: [
+        {
+          name: 'crimePerCapita',
+          label: 'Crime per capita',
+          calc: (props) =>
+            (props.wapol_total_person_crime +
+              props.wapol_total_property_crime) /
+            props.abs_people,
+          minColor: '#004085',
+          maxColor: '#cce5ff',
+        },
+        {
+          name: 'crimeTrend',
+          label: 'Crime trend',
+          calc: (props) =>
+            (props.wapol_total_person_crime +
+              props.wapol_total_property_crime) /
+            (props.wapol_avg_person_crime_prev_3y +
+              props.wapol_avg_property_crime_prev_3y),
+          minColor: '#004085',
+          maxColor: '#cce5ff',
+        },
+        {
+          name: 'populationDensity',
+          label: 'Population density',
+          calc: (props) => props.abs_people / props.abs_area_km2,
+          minColor: '#f03b20',
+          maxColor: '#ffeda0',
+        },
+        {
+          name: 'genderRatio',
+          label: 'Gender ratio',
+          calc: (props) => props.abs_male_ratio,
+          minColor: '#b22200',
+          maxColor: '#ffebcc',
+        },
+        {
+          name: 'medianAge',
+          label: 'Median age',
+          calc: (props) => props.abs_median_age,
+          minColor: '#005824',
+          maxColor: '#e7f2e9',
+        },
+        {
+          name: 'medianIncome',
+          label: 'Median income',
+          calc: (props) => props.abs_median_weekly_household_income,
+          minColor: '#08306b',
+          maxColor: '#e0ecf4',
+        },
+        {
+          name: 'australianBorn',
+          label: 'Australian born',
+          calc: (props) =>
+            props.abs_sub_country_of_birth_top_responses_australia_pct,
+          minColor: '#2a004e',
+          maxColor: '#ece7f2',
+        },
+        {
+          name: 'englishAtHome',
+          label: 'Only English used at home',
+          calc: (props) =>
+            props.abs_sub_language_used_at_home_top_responses_english_only_used_at_home_pct,
+          minColor: '#08306b',
+          maxColor: '#deebf7',
+        },
+        {
+          name: 'labourForce',
+          label: 'Participation in labour force',
+          calc: (props) =>
+            props.abs_sub_participation_in_the_labour_force_in_the_labour_force_pct,
+          minColor: '#d7301f',
+          maxColor: '#fff5eb',
+        },
+        {
+          name: 'homeOwnership',
+          label: 'Home ownership',
+          calc: (props) => props.abs_sub_tenure_type_owned_outright_pct,
+          minColor: '#b30000',
+          maxColor: '#fef0d9',
+        },
+        {
+          name: 'medianHousePrice',
+          label: 'Median house price',
+          calc: (props) => props.reiwa_median_house_sale,
+          minColor: '#54278f',
+          maxColor: '#f2f0f7',
+        },
+        {
+          name: 'salesGrowth',
+          label: 'Suburb sales growth',
+          calc: (props) => props.reiwa_sales_growth,
+          minColor: '#980043',
+          maxColor: '#fdd0a2',
+        },
+        {
+          name: 'suburbInterest',
+          label: 'Suburb interest level',
+          calc: (props) => props.reiwa_suburb_interest_level,
+          minColor: '#7a0177',
+          maxColor: '#f7f4f9',
+        },
+      ],
     }
   },
 
@@ -176,8 +264,7 @@ export default {
       const suburbDataFile = await zip.file('suburb_data.json').async('string') // Extract the JSON file from the ZIP
       this.suburbData = JSON.parse(suburbDataFile) // Parse the JSON file and store it in suburbData
 
-      this.calculateAverages() // Calculate averages for features
-      this.calculateRanks() // Calculate ranks for features
+      this.calculateAveragesAndRanks() // Calculate averages for features Calculate ranks for features
       this.initMap() // Initialize the map
     },
 
@@ -205,7 +292,7 @@ export default {
 
     // Method to convert suburb data to GeoJSON format
     convertToGeoJSON(suburbData) {
-      const features = Object.keys(suburbData).map((key) => {
+      const geoFeatures = Object.keys(suburbData).map((key) => {
         const coordinates = suburbData[key].abs_coordinates.map((coords) =>
           coords.map(([lng, lat]) => [lng, lat])
         )
@@ -225,7 +312,7 @@ export default {
 
       return {
         type: 'FeatureCollection',
-        features,
+        features: geoFeatures,
       }
     },
 
@@ -269,7 +356,6 @@ export default {
       const props = layer.feature.properties
       const featureIndex = this.selectedFeature
 
-      // Check if a feature is selected
       if (featureIndex === null || featureIndex === undefined) {
         layer
           .bindTooltip(`${props.name}`, {
@@ -281,84 +367,14 @@ export default {
         return
       }
 
-      let value
-      let rank
+      const feature = this.features[featureIndex]
+      const value = feature.calc(props)
+      const rank = this.ranks[feature.name][props.name]
 
-      // Determine the value and rank based on the selected feature
-      switch (featureIndex) {
-        case 0:
-          value =
-            (props.wapol_total_person_crime +
-              props.wapol_total_property_crime) /
-            props.abs_people
-          rank = this.ranks.crimePerCapita[props.name]
-          break
-        case 1:
-          value =
-            (props.wapol_total_person_crime +
-              props.wapol_total_property_crime) /
-            (props.wapol_avg_person_crime_prev_3y +
-              props.wapol_avg_property_crime_prev_3y)
-          rank = this.ranks.crimeTrend[props.name]
-          break
-        case 2:
-          value = props.abs_people / props.abs_area_km2
-          rank = this.ranks.populationDensity[props.name]
-          break
-        case 3:
-          value = props.abs_male_ratio
-          rank = this.ranks.genderRatio[props.name]
-          break
-        case 4:
-          value = props.abs_median_age
-          rank = this.ranks.medianAge[props.name]
-          break
-        case 5:
-          value = props.abs_median_weekly_household_income
-          rank = this.ranks.medianIncome[props.name]
-          break
-        case 6:
-          value = props.abs_sub_country_of_birth_top_responses_australia_pct
-          rank = this.ranks.australianBorn[props.name]
-          break
-        case 7:
-          value =
-            props.abs_sub_language_used_at_home_top_responses_english_only_used_at_home_pct
-          rank = this.ranks.englishAtHome[props.name]
-          break
-        case 8:
-          value =
-            props.abs_sub_participation_in_the_labour_force_in_the_labour_force_pct
-          rank = this.ranks.labourForce[props.name]
-          break
-        case 9:
-          value = props.abs_sub_tenure_type_owned_outright_pct
-          rank = this.ranks.homeOwnership[props.name]
-          break
-        case 10:
-          value = props.reiwa_median_house_sale
-          rank = this.ranks.medianHousePrice[props.name]
-          break
-        case 11:
-          value = props.reiwa_sales_growth
-          rank = this.ranks.salesGrowth[props.name]
-          break
-        case 12:
-          value = props.reiwa_suburb_interest_level
-          rank = this.ranks.suburbInterest[props.name]
-          break
-        default:
-          value = null
-          rank = null
-      }
-
-      // Display the tooltip with the suburb name, value, and rank
       if (value !== null) {
         layer
           .bindTooltip(
-            `${props.name}. ${this.featureLabels[featureIndex]}: ${value.toFixed(
-              2
-            )} (Rank: ${rank})`,
+            `${props.name}. ${feature.label}: ${value.toFixed(2)} (Rank: ${rank})`,
             {
               permanent: false,
               direction: 'center',
@@ -368,229 +384,86 @@ export default {
           .openTooltip()
       }
     },
-    // Method to handle suburb mouseout event
-    onSuburbMouseout(e) {
-      e.target.closeTooltip()
-    },
+
     // Method to calculate average values for features
-    calculateAverages() {
-      const total = {
-        crimePerCapita: 0,
-        crimeTrend: 0,
-        populationDensity: 0,
-        genderRatio: 0,
-        medianAge: 0,
-        medianIncome: 0,
-        australianBorn: 0,
-        englishAtHome: 0,
-        labourForce: 0,
-        homeOwnership: 0,
-        medianHousePrice: 0,
-        salesGrowth: 0,
-        suburbInterest: 0,
-      }
+    calculateAveragesAndRanks() {
+      const totals = this.features.reduce((acc, feature) => {
+        acc[feature.name] = 0
+        return acc
+      }, {})
+
+      const featureValues = this.features.reduce((acc, feature) => {
+        acc[feature.name] = []
+        return acc
+      }, {})
+
       let count = 0
 
-      // Calculate total values for each feature
-      Object.values(this.suburbData).forEach((data) => {
-        total.crimePerCapita +=
-          (data.wapol_total_person_crime + data.wapol_total_property_crime) /
-          data.abs_people
-        total.crimeTrend +=
-          (data.wapol_total_person_crime + data.wapol_total_property_crime) /
-          (data.wapol_avg_person_crime_prev_3y +
-            data.wapol_avg_property_crime_prev_3y)
-        total.populationDensity += data.abs_people / data.abs_area_km2
-        total.genderRatio += data.abs_male_ratio
-        total.medianAge += data.abs_median_age
-        total.medianIncome += data.abs_median_weekly_household_income
-        total.australianBorn +=
-          data.abs_sub_country_of_birth_top_responses_australia_pct
-        total.englishAtHome +=
-          data.abs_sub_language_used_at_home_top_responses_english_only_used_at_home_pct
-        total.labourForce +=
-          data.abs_sub_participation_in_the_labour_force_in_the_labour_force_pct
-        total.homeOwnership += data.abs_sub_tenure_type_owned_outright_pct
-        total.medianHousePrice += data.reiwa_median_house_sale
-        total.salesGrowth += data.reiwa_sales_growth
-        total.suburbInterest += data.reiwa_suburb_interest_level
+      Object.entries(this.suburbData).forEach(([key, data]) => {
+        this.features.forEach((feature) => {
+          const value = feature.calc(data)
+          totals[feature.name] += value
+          featureValues[feature.name].push({
+            name: key,
+            value,
+          })
+        })
         count += 1
       })
 
-      // Calculate average values for each feature
-      this.averages = {
-        crimePerCapita: total.crimePerCapita / count,
-        crimeTrend: total.crimeTrend / count,
-        populationDensity: total.populationDensity / count,
-        genderRatio: total.genderRatio / count,
-        medianAge: total.medianAge / count,
-        medianIncome: total.medianIncome / count,
-        australianBorn: total.australianBorn / count,
-        englishAtHome: total.englishAtHome / count,
-        labourForce: total.labourForce / count,
-        homeOwnership: total.homeOwnership / count,
-        medianHousePrice: total.medianHousePrice / count,
-        salesGrowth: total.salesGrowth / count,
-        suburbInterest: total.suburbInterest / count,
-      }
-    },
-    // Method to calculate rank values for features
-    calculateRanks() {
-      const featureValues = {
-        crimePerCapita: [],
-        crimeTrend: [],
-        populationDensity: [],
-        genderRatio: [],
-        medianAge: [],
-        medianIncome: [],
-        australianBorn: [],
-        englishAtHome: [],
-        labourForce: [],
-        homeOwnership: [],
-        medianHousePrice: [],
-        salesGrowth: [],
-        suburbInterest: [],
-      }
+      this.averages = this.features.reduce((acc, feature) => {
+        acc[feature.name] = totals[feature.name] / count
+        return acc
+      }, {})
 
-      // Populate featureValues with data for each feature
-      Object.entries(this.suburbData).forEach(([key, data]) => {
-        featureValues.crimePerCapita.push({
-          name: key,
-          value:
-            (data.wapol_total_person_crime + data.wapol_total_property_crime) /
-            data.abs_people,
-        })
-        featureValues.crimeTrend.push({
-          name: key,
-          value:
-            (data.wapol_total_person_crime + data.wapol_total_property_crime) /
-            (data.wapol_avg_person_crime_prev_3y +
-              data.wapol_avg_property_crime_prev_3y),
-        })
-        featureValues.populationDensity.push({
-          name: key,
-          value: data.abs_people / data.abs_area_km2,
-        })
-        featureValues.genderRatio.push({
-          name: key,
-          value: data.abs_male_ratio,
-        })
-        featureValues.medianAge.push({ name: key, value: data.abs_median_age })
-        featureValues.medianIncome.push({
-          name: key,
-          value: data.abs_median_weekly_household_income,
-        })
-        featureValues.australianBorn.push({
-          name: key,
-          value: data.abs_sub_country_of_birth_top_responses_australia_pct,
-        })
-        featureValues.englishAtHome.push({
-          name: key,
-          value:
-            data.abs_sub_language_used_at_home_top_responses_english_only_used_at_home_pct,
-        })
-        featureValues.labourForce.push({
-          name: key,
-          value:
-            data.abs_sub_participation_in_the_labour_force_in_the_labour_force_pct,
-        })
-        featureValues.homeOwnership.push({
-          name: key,
-          value: data.abs_sub_tenure_type_owned_outright_pct,
-        })
-        featureValues.medianHousePrice.push({
-          name: key,
-          value: data.reiwa_median_house_sale,
-        })
-        featureValues.salesGrowth.push({
-          name: key,
-          value: data.reiwa_sales_growth,
-        })
-        featureValues.suburbInterest.push({
-          name: key,
-          value: data.reiwa_suburb_interest_level,
-        })
-      })
-
-      // Calculate ranks for each feature
-      Object.keys(featureValues).forEach((feature) => {
-        featureValues[feature].sort((a, b) => b.value - a.value)
-        this.ranks[feature] = {}
-        featureValues[feature].forEach((item, index) => {
-          this.ranks[feature][item.name] = index + 1
+      this.features.forEach((feature) => {
+        featureValues[feature.name].sort((a, b) => b.value - a.value)
+        this.ranks[feature.name] = {}
+        featureValues[feature.name].forEach((item, index) => {
+          this.ranks[feature.name][item.name] = index + 1
         })
       })
     },
+
     // Method to update the feature displayed on the map
     updateFeature() {
       this.showSuburbs = false
       const featureIndex = this.selectedFeature
+
       if (featureIndex === null) {
         this.geojsonLayer.setStyle(() => ({ fillOpacity: 0 }))
         return
       }
 
-      const featureMap = {
-        0: 'crimePerCapita',
-        1: 'crimeTrend',
-        2: 'populationDensity',
-        3: 'genderRatio',
-        4: 'medianAge',
-        5: 'medianIncome',
-        6: 'australianBorn',
-        7: 'englishAtHome',
-        8: 'labourForce',
-        9: 'homeOwnership',
-        10: 'medianHousePrice',
-        11: 'salesGrowth',
-        12: 'suburbInterest',
-      }
-
-      const colorScales = [
-        ['#004085', '#cce5ff'], // Crime per capita (dark blue to light blue)
-        ['#004085', '#cce5ff'], // Crime trend (dark blue to light blue)
-        ['#f03b20', '#ffeda0'], // Population density (dark red to light yellow)
-        ['#b22200', '#ffebcc'], // Gender ratio (dark red to light orange)
-        ['#005824', '#e7f2e9'], // Median age (dark green to light green)
-        ['#08306b', '#e0ecf4'], // Median income (dark blue to light blue)
-        ['#2a004e', '#ece7f2'], // Australian born (dark purple to light purple)
-        ['#08306b', '#deebf7'], // Only English used at home (dark blue to light blue)
-        ['#d7301f', '#fff5eb'], // Participation in labour force (dark red to light orange)
-        ['#b30000', '#fef0d9'], // Home ownership (dark red to light pink)
-        ['#54278f', '#f2f0f7'], // Median house price (dark purple to light purple)
-        ['#980043', '#fdd0a2'], // Suburb sales growth (dark pink to light pink)
-        ['#7a0177', '#f7f4f9'], // Suburb interest level (dark purple to light purple)
-      ]
-
-      const feature = featureMap[featureIndex]
-      const featureRanks = this.ranks[feature]
+      const feature = this.features[featureIndex]
+      const featureRanks = this.ranks[feature.name]
 
       if (!featureRanks) {
-        console.error(`No data available for feature: ${feature}`)
+        console.error(`No data available for feature: ${feature.name}`)
         return
       }
 
       const min = Math.min(...Object.values(featureRanks))
       const max = Math.max(...Object.values(featureRanks))
-      const [lowColor, highColor] = colorScales[featureIndex]
+      const { minColor, maxColor } = feature
 
       const getColor = (value) => {
         const valueRatio = (value - min) / (max - min)
         const interpolate = (start, end, ratio) =>
           Math.round(start + (end - start) * ratio)
         const r = interpolate(
-          parseInt(lowColor.slice(1, 3), 16),
-          parseInt(highColor.slice(1, 3), 16),
+          parseInt(minColor.slice(1, 3), 16),
+          parseInt(maxColor.slice(1, 3), 16),
           valueRatio
         )
         const g = interpolate(
-          parseInt(lowColor.slice(3, 5), 16),
-          parseInt(highColor.slice(3, 5), 16),
+          parseInt(minColor.slice(3, 5), 16),
+          parseInt(maxColor.slice(3, 5), 16),
           valueRatio
         )
         const b = interpolate(
-          parseInt(lowColor.slice(5, 7), 16),
-          parseInt(highColor.slice(5, 7), 16),
+          parseInt(minColor.slice(5, 7), 16),
+          parseInt(maxColor.slice(5, 7), 16),
           valueRatio
         )
         return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
@@ -602,7 +475,7 @@ export default {
 
         if (rank !== undefined) {
           layer.setStyle({
-            fillColor: getColor(rank, min, max, lowColor, highColor),
+            fillColor: getColor(rank),
             fillOpacity: 0.7,
             color: 'none',
           })
@@ -614,14 +487,9 @@ export default {
         }
       })
 
-      this.updateLegend(
-        min,
-        max,
-        lowColor,
-        highColor,
-        this.featureLabels[featureIndex]
-      )
+      this.updateLegend(min, max, minColor, maxColor, feature.label)
     },
+
     // Method to update the legend on the map
     updateLegend(min, max, lowColor, highColor, featureLabel) {
       const createLegend = () => {
