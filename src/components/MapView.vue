@@ -9,9 +9,9 @@
           @change="toggleSuburbs"
           id="showSuburbsCheckbox"
         />
-        <label class="form-check-label" for="showSuburbsCheckbox"
-          >Show Suburb Boundaries</label
-        >
+        <label class="form-check-label" for="showSuburbsCheckbox">
+          Show Suburb Boundaries
+        </label>
       </div>
       <div
         v-for="(feature, index) in predefinedFeatures"
@@ -48,6 +48,22 @@
             </option>
           </select>
         </label>
+      </div>
+      <div class="slider-container mt-3">
+        <label for="populationSlider">Minimum Population</label>
+        <input
+          type="range"
+          id="populationSlider"
+          min="0"
+          :max="maxPopulation"
+          v-model="minPopulation"
+          @input="filterByPopulation"
+          class="form-range"
+        />
+        <div class="slider-values">
+          <span>{{ minPopulation }}</span>
+          <span>{{ maxPopulation }}</span>
+        </div>
       </div>
     </div>
     <div id="map-container"></div>
@@ -126,6 +142,27 @@ body {
 .form-check-input {
   margin-right: 10px;
   cursor: pointer;
+}
+
+.slider-container {
+  margin-top: 20px;
+  width: 100%;
+}
+
+.slider-container label {
+  display: block;
+  margin-bottom: 10px;
+}
+
+#populationSlider {
+  width: 100%;
+}
+
+.slider-values {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-top: 5px;
 }
 
 #map-container {
@@ -283,6 +320,8 @@ export default {
         { key: 'medianIncome', label: 'Median income' },
       ],
       featureRanks: {}, // Added to store precomputed ranks
+      minPopulation: 0,
+      maxPopulation: 0,
     }
   },
 
@@ -305,6 +344,7 @@ export default {
       this.calculatePredefinedFeatures()
       this.populateFeatureLabels()
       this.precomputeFeatureRanks() // Precompute ranks
+      this.calculateMaxPopulation() // Calculate max population for the slider
       this.initMap()
     },
 
@@ -393,15 +433,17 @@ export default {
         return
       }
 
-      const value = props[featureKey]
-      const rank = this.featureRanks[featureKey][props.name]
+      const filteredData = this.filterSuburbsByPopulation()
+      const featureRanks = this.calculateRanks(featureKey, filteredData)
+      const rank = featureRanks[props.name]
 
-      if (value === undefined) {
+      if (rank === undefined) {
         return
       }
 
+      const value = props[featureKey]
       const rankColor = this.getRankColor(rank)
-      const totalSuburbs = Object.keys(this.featureRanks[featureKey]).length
+      const totalSuburbs = Object.keys(featureRanks).length
       const percentile = ((totalSuburbs - rank + 1) / totalSuburbs) * 100
 
       this.showTooltip(
@@ -456,8 +498,9 @@ export default {
       )
     },
 
-    calculateRanks(featureKey) {
-      const featureValues = Object.entries(this.suburbData)
+    calculateRanks(featureKey, filteredData = null) {
+      const dataToRank = filteredData || this.suburbData
+      const featureValues = Object.entries(dataToRank)
         .filter(([, data]) => data[featureKey] !== undefined)
         .map(([key, data]) => ({
           name: key,
@@ -490,14 +533,10 @@ export default {
         return
       }
 
-      const featureRanks = this.featureRanks[featureKey]
+      const filteredData = this.filterSuburbsByPopulation()
+      const featureRanks = this.calculateRanks(featureKey, filteredData)
 
-      if (!featureRanks) {
-        console.error(`No data available for feature: ${featureKey}`)
-        return
-      }
-
-      const suburbValues = Object.values(this.suburbData)
+      const suburbValues = Object.values(filteredData)
         .map((d) => d[featureKey])
         .filter((value) => value !== undefined)
 
@@ -505,7 +544,7 @@ export default {
       const max = Math.max(...suburbValues)
       const avg = suburbValues.reduce((a, b) => a + b, 0) / suburbValues.length
 
-      const totalSuburbs = Object.keys(this.featureRanks[featureKey]).length
+      const totalSuburbs = Object.keys(featureRanks).length
       const minColor = '#cce5ff' // Light color
       const maxColor = '#004085' // Dark color
 
@@ -563,6 +602,24 @@ export default {
       )
     },
 
+    filterSuburbsByPopulation() {
+      const filteredData = {}
+      Object.keys(this.suburbData).forEach((key) => {
+        if (this.suburbData[key].abs_people >= this.minPopulation) {
+          filteredData[key] = this.suburbData[key]
+        }
+      })
+      return filteredData
+    },
+
+    filterByPopulation() {
+      if (this.selectedFeature) {
+        this.updateFeatureDisplay(this.selectedFeature)
+      } else if (this.selectedDynamicFeature) {
+        this.updateFeatureDisplay(this.selectedDynamicFeature)
+      }
+    },
+
     updateLegend(
       minValue,
       maxValue,
@@ -576,7 +633,7 @@ export default {
         const div = L.DomUtil.create('div', 'info legend')
 
         const titleDiv = L.DomUtil.create('div', 'title', div)
-        titleDiv.innerHTML = `${featureLabel} <br>(${count} suburbs, Avg: ${this.formatValue(avgValue)})`
+        titleDiv.innerHTML = `${featureLabel} <br>(${count} suburbs, avg. ${this.formatValue(avgValue)})`
 
         const gradientContainer = L.DomUtil.create(
           'div',
@@ -645,6 +702,12 @@ export default {
       if (percentile >= 50) return '#0070ff' // Sub 75 percentile
       if (percentile >= 25) return '#1eff00' // Sub 50 percentile
       return '#666' // Sub 25 percentile
+    },
+
+    calculateMaxPopulation() {
+      this.maxPopulation = Math.max(
+        ...Object.values(this.suburbData).map((d) => d.abs_people)
+      )
     },
   },
 }
