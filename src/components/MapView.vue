@@ -17,6 +17,24 @@
         />
         {{ feature.label }}
       </label>
+      <!-- Dropdown for selecting any feature from suburb data -->
+      <div class="select-container">
+        <label>
+          Select Feature:
+          <select
+            v-model="selectedDynamicFeature"
+            @change="updateDynamicFeature"
+          >
+            <option
+              v-for="(featureLabel, featureKey) in allFeatureLabels"
+              :key="featureKey"
+              :value="featureKey"
+            >
+              {{ featureLabel }}
+            </option>
+          </select>
+        </label>
+      </div>
     </div>
     <!-- Container for the map -->
     <div id="map-container"></div>
@@ -38,6 +56,36 @@
 #sidebar label {
   display: block; /* Ensure each checkbox is on a new line */
   margin-bottom: 5px;
+}
+
+.select-container {
+  margin-top: 10px;
+}
+
+.select-container label {
+  display: flex;
+  flex-direction: column;
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.select-container select {
+  width: 100%;
+  max-width: 200px;
+  padding: 8px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background-color: #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  appearance: none; /* Remove default styling on some browsers */
+}
+
+.select-container select:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
 }
 
 #map-container {
@@ -143,6 +191,8 @@ export default {
       selectedFeature: null, // Currently selected feature
       averages: {}, // Object to hold average values for features
       ranks: {}, // Object to hold rank values for features
+      selectedDynamicFeature: null, // Currently selected dynamic feature
+      allFeatureLabels: {}, // Labels for all features
       // Define the Feature Object
       features: [
         {
@@ -265,6 +315,7 @@ export default {
       this.suburbData = JSON.parse(suburbDataFile) // Parse the JSON file and store it in suburbData
 
       this.calculateAveragesAndRanks() // Calculate averages for features Calculate ranks for features
+      this.populateFeatureLabels() // Populate feature labels dropdown
       this.initMap() // Initialize the map
     },
 
@@ -360,49 +411,51 @@ export default {
     },
 
     // Method to handle suburb mouseover event
-    // Method to handle suburb mouseover event
-    // Method to handle suburb mouseover event
     onSuburbMouseover(e) {
       const layer = e.target
       const props = layer.feature.properties
       const featureIndex = this.selectedFeature
+      const dynamicFeature = this.selectedDynamicFeature
 
-      if (featureIndex === null || featureIndex === undefined) {
-        layer
-          .bindTooltip(`${props.name}`, {
-            permanent: false,
-            direction: 'center',
-            className: 'suburb-label',
-          })
-          .openTooltip()
+      if (featureIndex === null && !dynamicFeature) {
+        this.showTooltip(layer, `${props.name}`)
         return
       }
 
-      const feature = this.features[featureIndex]
-      const value = feature.calc(props)
-      const rank = this.ranks[feature.name][props.name]
-
-      if (value !== null && !Number.isNaN(value)) {
-        layer
-          .bindTooltip(
-            `${props.name}. ${feature.label}: ${value.toFixed(2)} (Rank: ${rank})`,
-            {
-              permanent: false,
-              direction: 'center',
-              className: 'suburb-label',
-            }
-          )
-          .openTooltip()
+      let feature
+      let value
+      let rank
+      if (featureIndex !== null) {
+        feature = this.features[featureIndex]
+        value = feature.calc(props)
+        rank = this.ranks[feature.name][props.name]
       } else {
-        // Handle the case where value is not a number
-        layer
-          .bindTooltip(`${props.name}. ${feature.label}: N/A (Rank: ${rank})`, {
-            permanent: false,
-            direction: 'center',
-            className: 'suburb-label',
-          })
-          .openTooltip()
+        feature = {
+          name: dynamicFeature,
+          label: this.allFeatureLabels[dynamicFeature],
+        }
+        value = props[dynamicFeature]
+        rank = this.calculateDynamicRanks(feature.name)[props.name]
       }
+
+      this.showTooltip(
+        layer,
+        `${props.name}. ${feature.label}: ${this.formatValue(value)} (Rank: ${rank})`
+      )
+    },
+
+    showTooltip(layer, content) {
+      layer
+        .bindTooltip(content, {
+          permanent: false,
+          direction: 'center',
+          className: 'suburb-label',
+        })
+        .openTooltip()
+    },
+
+    formatValue(value) {
+      return value !== null && !Number.isNaN(value) ? value.toFixed(2) : 'N/A'
     },
 
     // Method to calculate average values for features
@@ -445,18 +498,47 @@ export default {
       })
     },
 
+    calculateDynamicRanks(featureName) {
+      const featureValues = Object.entries(this.suburbData).map(
+        ([key, data]) => ({
+          name: key,
+          value: data[featureName],
+        })
+      )
+
+      featureValues.sort((a, b) => b.value - a.value)
+      const ranks = {}
+      featureValues.forEach((item, index) => {
+        ranks[item.name] = index + 1
+      })
+      return ranks
+    },
+
     // Method to update the feature displayed on the map
     updateFeature() {
       this.showSuburbs = false
       const featureIndex = this.selectedFeature
 
-      if (featureIndex === null) {
+      if (featureIndex === null && !this.selectedDynamicFeature) {
         this.geojsonLayer.setStyle(() => ({ fillOpacity: 0 }))
         return
       }
 
-      const feature = this.features[featureIndex]
-      const featureRanks = this.ranks[feature.name]
+      let feature
+      let featureRanks
+      if (featureIndex !== null) {
+        feature = this.features[featureIndex]
+        featureRanks = this.ranks[feature.name]
+      } else {
+        feature = {
+          name: this.selectedDynamicFeature,
+          label: this.allFeatureLabels[this.selectedDynamicFeature],
+          calc: (props) => props[this.selectedDynamicFeature],
+          minColor: '#004085', // Use default colors or create a dynamic color scheme
+          maxColor: '#cce5ff',
+        }
+        featureRanks = this.calculateDynamicRanks(feature.name)
+      }
 
       if (!featureRanks) {
         console.error(`No data available for feature: ${feature.name}`)
@@ -510,6 +592,12 @@ export default {
       this.updateLegend(min, max, minColor, maxColor, feature.label)
     },
 
+    // Method to update dynamic feature
+    updateDynamicFeature() {
+      this.selectedFeature = null
+      this.updateFeature()
+    },
+
     // Method to update the legend on the map
     updateLegend(min, max, lowColor, highColor, featureLabel) {
       const createLegend = () => {
@@ -555,6 +643,26 @@ export default {
       this.legend = L.control({ position: 'topleft' })
       this.legend.onAdd = createLegend
       this.legend.addTo(map)
+    },
+
+    // Create dynamic feature labels based on suburb data
+    populateFeatureLabels() {
+      this.allFeatureLabels = {}
+      const sampleSuburb = Object.values(this.suburbData)[0]
+      if (sampleSuburb) {
+        Object.keys(sampleSuburb).forEach((key) => {
+          if (!this.features.some((feature) => feature.name === key)) {
+            this.allFeatureLabels[key] = this.getFeatureLabel(key)
+          }
+        })
+      }
+    },
+
+    // Convert raw feature names into somewhat decent looking labels
+    getFeatureLabel(featureKey) {
+      return featureKey
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (char) => char.toUpperCase())
     },
   },
 }
