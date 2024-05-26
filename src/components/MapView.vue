@@ -1,29 +1,39 @@
 <template>
   <div id="app">
-    <!-- Sidebar with controls -->
-    <div id="sidebar">
-      <!-- Checkbox to toggle suburb boundaries -->
-      <label>
-        <input type="checkbox" v-model="showSuburbs" @change="toggleSuburbs" />
-        Show Suburb Boundaries
-      </label>
-      <!-- Radio buttons for selecting features to display -->
-      <label v-for="(feature, index) in features" :key="index">
+    <div id="sidebar" class="p-3 transition">
+      <div class="form-check">
+        <input
+          type="checkbox"
+          class="form-check-input"
+          v-model="showSuburbs"
+          @change="toggleSuburbs"
+          id="showSuburbsCheckbox"
+        />
+        <label class="form-check-label" for="showSuburbsCheckbox"
+          >Show Suburb Boundaries</label
+        >
+      </div>
+      <div v-for="(feature, index) in features" :key="index" class="form-check">
         <input
           type="radio"
           :value="index"
           v-model="selectedFeature"
           @change="updateFeature"
+          class="form-check-input"
+          :id="`feature${index}`"
         />
-        {{ feature.label }}
-      </label>
-      <!-- Dropdown for selecting any feature from suburb data -->
-      <div class="select-container">
-        <label>
-          Select Feature:
+        <label class="form-check-label" :for="`feature${index}`">{{
+          feature.label
+        }}</label>
+      </div>
+      <div class="select-container mt-3">
+        <label for="dynamicFeatureSelect">
+          Select raw feature:
           <select
+            class="form-select"
             v-model="selectedDynamicFeature"
             @change="updateDynamicFeature"
+            id="dynamicFeatureSelect"
           >
             <option
               v-for="(featureLabel, featureKey) in allFeatureLabels"
@@ -36,30 +46,46 @@
         </label>
       </div>
     </div>
-    <!-- Container for the map -->
     <div id="map-container"></div>
   </div>
 </template>
 
 <style>
+@import 'bootstrap/dist/css/bootstrap.min.css';
+@import 'bootswatch/dist/darkly/bootstrap.min.css';
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Roboto:wght@400;700&display=swap');
+
+/* Global Styles */
+body {
+  font-family: 'Open Sans', sans-serif;
+  background-color: #343a40;
+  color: #f8f9fa;
+  margin: 0;
+}
+
 #app {
   display: flex;
 }
 
 #sidebar {
   width: 300px;
-  padding: 10px;
-  background: #f7f7f7;
-  border-right: 1px solid #ddd;
+  padding: 20px;
+  background: #495057;
+  border-right: 1px solid #6c757d;
+  overflow-y: auto;
 }
 
 #sidebar label {
-  display: block; /* Ensure each checkbox is on a new line */
-  margin-bottom: 5px;
+  display: block;
+  margin-bottom: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: 'Roboto', sans-serif;
+  font-weight: 600;
 }
 
 .select-container {
-  margin-top: 10px;
+  margin-top: 20px;
 }
 
 .select-container label {
@@ -68,24 +94,34 @@
   font-size: 16px;
   font-weight: bold;
   margin-bottom: 8px;
+  font-family: 'Roboto', sans-serif;
 }
 
 .select-container select {
   width: 100%;
-  max-width: 200px;
+  max-width: 250px; /* Adjusted width */
   padding: 8px;
   font-size: 14px;
   border: 1px solid #ccc;
   border-radius: 4px;
-  background-color: #fff;
+  background-color: #6c757d;
+  color: #f8f9fa;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  appearance: none; /* Remove default styling on some browsers */
+  appearance: none;
+  transition:
+    border-color 0.3s,
+    box-shadow 0.3s;
 }
 
 .select-container select:focus {
   outline: none;
   border-color: #007bff;
   box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
+}
+
+.form-check-input {
+  margin-right: 10px;
+  cursor: pointer;
 }
 
 #map-container {
@@ -95,11 +131,12 @@
 
 .suburb-label {
   font-size: 14px;
-  font-family: 'Arial, Helvetica, sans-serif';
-  color: #000;
-  background: #fff;
+  font-family: 'Roboto', sans-serif;
+  color: #f8f9fa;
+  background: #343a40;
   border: 1px solid #ccc;
-  padding: 2px;
+  padding: 5px;
+  border-radius: 4px;
 }
 
 path.leaflet-interactive:focus {
@@ -111,37 +148,65 @@ path.leaflet-interactive:focus {
 }
 
 .leaflet-top.leaflet-left {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
+  top: 10px !important; /* Adjust positioning as needed */
+  left: 10px !important; /* Ensure the controls are not hidden */
+  z-index: 1000; /* Ensure the controls stay above other elements */
 }
 
 .leaflet-control-zoom {
-  margin-right: 120px; /* Adjust as needed for spacing between controls and legend */
+  display: flex;
+  flex-direction: column;
+  position: relative; /* Ensure it stays within the map container */
+  margin-bottom: 50px; /* Add margin to avoid overlap with legend */
+}
+
+.leaflet-control-zoom-in,
+.leaflet-control-zoom-out {
+  width: 30px;
+  height: 30px;
+  background-color: #495057;
+  color: #f8f9fa;
+  border: 1px solid #6c757d;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: bold;
+  transition:
+    background-color 0.3s,
+    color 0.3s;
+}
+
+.leaflet-control-zoom-in:hover,
+.leaflet-control-zoom-out:hover {
+  background-color: #007bff;
+  color: #fff;
 }
 
 .info.legend {
-  background: white;
-  padding: 6px 8px;
+  position: absolute; /* Ensure it stays within the map container */
+  top: 0px; /* Adjust to avoid overlap with zoom controls */
+  left: 50px; /* Adjust as needed */
+  background: #495057;
+  padding: 10px;
   font:
-    14px/16px Arial,
-    Helvetica,
+    14px/16px 'Roboto',
     sans-serif;
   border-radius: 10px;
   box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
-  transform: translateX(-50%); /* Center alignment correction */
-  z-index: 1000; /* Ensure it appears above other elements */
+  z-index: 1000;
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 220px; /* Set the minimum width for the legend */
+  min-width: 230px;
   min-height: 52px;
 }
 
 .info.legend .title {
   font-weight: bold;
-  font-size: 16px; /* Adjust the font size as needed */
-  color: #333; /* Adjust the color as needed */
+  font-size: 16px;
+  color: #f8f9fa;
 }
 
 .info.legend .gradient-container {
@@ -154,22 +219,39 @@ path.leaflet-interactive:focus {
 .info.legend .gradient-bar {
   flex-grow: 1;
   height: 20px;
-  background: linear-gradient(
-    to right,
-    yellow,
-    red
-  ); /* Adjust colors as needed */
+  background: linear-gradient(to right, yellow, red);
   margin: 0 10px;
 }
 
 .info.legend .min-value {
   font-size: 12px;
-  color: #333;
+  color: #f8f9fa;
 }
 
 .info.legend .max-value {
   font-size: 12px;
-  color: #333;
+  color: #f8f9fa;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #6c757d;
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+::-webkit-scrollbar-track {
+  background: #495057;
+}
+
+.transition {
+  transition: all 0.3s ease;
 }
 </style>
 
@@ -438,6 +520,10 @@ export default {
         rank = this.calculateDynamicRanks(feature.name)[props.name]
       }
 
+      if (value === undefined) {
+        return
+      }
+
       this.showTooltip(
         layer,
         `${props.name}. ${feature.label}: ${this.formatValue(value)} (Rank: ${rank})`
@@ -499,18 +585,20 @@ export default {
     },
 
     calculateDynamicRanks(featureName) {
-      const featureValues = Object.entries(this.suburbData).map(
-        ([key, data]) => ({
+      const featureValues = Object.entries(this.suburbData)
+        .filter(([, data]) => data[featureName] !== undefined) // Filter out undefined values
+        .map(([key, data]) => ({
           name: key,
           value: data[featureName],
-        })
-      )
+        }))
 
       featureValues.sort((a, b) => b.value - a.value)
+
       const ranks = {}
       featureValues.forEach((item, index) => {
         ranks[item.name] = index + 1
       })
+
       return ranks
     },
 
@@ -652,17 +740,10 @@ export default {
       if (sampleSuburb) {
         Object.keys(sampleSuburb).forEach((key) => {
           if (!this.features.some((feature) => feature.name === key)) {
-            this.allFeatureLabels[key] = this.getFeatureLabel(key)
+            this.allFeatureLabels[key] = key // Directly use the key as the label
           }
         })
       }
-    },
-
-    // Convert raw feature names into somewhat decent looking labels
-    getFeatureLabel(featureKey) {
-      return featureKey
-        .replace(/_/g, ' ')
-        .replace(/\b\w/g, (char) => char.toUpperCase())
     },
   },
 }
