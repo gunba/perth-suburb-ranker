@@ -451,7 +451,7 @@ export default {
           label: 'Crime per capita',
           minColor: '#ffcccc',
           maxColor: '#990000',
-          icon: 'security',
+          icon: 'gavel',
         },
         {
           key: 'populationDensity',
