@@ -12,7 +12,7 @@
           id="showSuburbsCheckbox"
         />
         <label class="form-check-label" for="showSuburbsCheckbox">
-          Show Suburb Boundaries
+          <i class="material-icons">map</i> Show Suburb Boundaries
         </label>
       </div>
       <div
@@ -28,9 +28,9 @@
           class="form-check-input"
           :id="`feature${index}`"
         />
-        <label class="form-check-label" :for="`feature${index}`">{{
-          feature.label
-        }}</label>
+        <label class="form-check-label" :for="`feature${index}`">
+          <i class="material-icons">{{ feature.icon }}</i> {{ feature.label }}
+        </label>
       </div>
       <div class="select-container mt-3">
         <label for="dynamicFeatureSelect">
@@ -123,6 +123,7 @@
 @import 'bootstrap/dist/css/bootstrap.min.css';
 @import 'bootswatch/dist/darkly/bootstrap.min.css';
 @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Roboto:wght@400;700&display=swap');
+@import '~material-design-icons-iconfont/dist/material-design-icons.css';
 
 /* Global Styles */
 body {
@@ -413,6 +414,17 @@ path.leaflet-interactive:focus {
 .outliers-container div:hover {
   text-decoration: underline;
 }
+
+.form-check-label {
+  display: flex;
+  align-items: center;
+}
+
+.form-check-label i.material-icons {
+  margin-right: 8px;
+  font-size: 18px;
+  vertical-align: middle;
+}
 </style>
 
 <script>
@@ -434,9 +446,83 @@ export default {
       selectedDynamicFeature: null,
       allFeatureLabels: {},
       predefinedFeatures: [
-        { key: 'crimePerCapita', label: 'Crime per capita' },
-        { key: 'populationDensity', label: 'Population density' },
-        { key: 'medianIncome', label: 'Median income / month' },
+        {
+          key: 'crimePerCapita',
+          label: 'Crime per capita',
+          minColor: '#ffcccc',
+          maxColor: '#990000',
+          icon: 'security',
+        },
+        {
+          key: 'populationDensity',
+          label: 'Population density',
+          minColor: '#ccffcc',
+          maxColor: '#006600',
+          icon: 'people',
+        },
+        {
+          key: 'publicTransportUsage',
+          label: 'Public transport usage',
+          minColor: '#cce5ff',
+          maxColor: '#004085',
+          icon: 'directions_bus',
+        },
+        {
+          key: 'educationLevel',
+          label: 'Education level',
+          minColor: '#e5ffcc',
+          maxColor: '#669900',
+          icon: 'school',
+        },
+        {
+          key: 'incomeToRentRatio',
+          label: 'Income to rent ratio',
+          minColor: '#ffd9cc',
+          maxColor: '#993300',
+          icon: 'attach_money',
+        },
+        {
+          key: 'childDependencyRatio',
+          label: 'Child dependency ratio',
+          minColor: '#d9ccff',
+          maxColor: '#660099',
+          icon: 'child_care',
+        },
+        {
+          key: 'seniorDependencyRatio',
+          label: 'Senior dependency ratio',
+          minColor: '#ffcccc',
+          maxColor: '#990033',
+          icon: 'accessible',
+        },
+        {
+          key: 'workingAgePopulationRatio',
+          label: 'Working age population ratio',
+          minColor: '#cceeff',
+          maxColor: '#003366',
+          icon: 'groups',
+        },
+        {
+          key: 'religiosityRate',
+          label: 'Religiosity rate',
+          minColor: '#ffccff',
+          maxColor: '#660066',
+          icon: 'church',
+        },
+        {
+          key: 'culturalDiversity',
+          label: 'Cultural diversity',
+          minColor: '#ccffcc',
+          maxColor: '#006600',
+          icon: 'public',
+        },
+        {
+          key: 'marriageRate',
+          label: 'Marriage rate',
+          minColor: '#ffd9cc',
+          maxColor: '#993300',
+          icon: 'favorite',
+        },
       ],
       featureRanks: {},
       minPopulation: 0,
@@ -649,8 +735,51 @@ export default {
           data.abs_people
         this.suburbData[key].populationDensity =
           data.abs_people / data.abs_area_km2
-        this.suburbData[key].medianIncome =
-          data.abs_median_weekly_household_income
+        this.suburbData[key].publicTransportUsage =
+          (data.abs_sub_method_of_travel_to_work_on_the_day_of_the_census_top_responses_bus_pct ||
+            0) +
+          (data.abs_sub_method_of_travel_to_work_on_the_day_of_the_census_top_responses_train_pct ||
+            0) +
+          (data.abs_sub_method_of_travel_to_work_on_the_day_of_the_census_top_responses_train_bus_pct ||
+            0)
+        this.suburbData[key].educationLevel =
+          data.abs_sub_level_of_highest_educational_attainment_bachelor_degree_level_and_above_pct
+        this.suburbData[key].incomeToRentRatio =
+          data.abs_median_weekly_household_income / data.abs_median_weekly_rent
+        this.suburbData[key].childDependencyRatio =
+          data.abs_sub_age_04_years_pct +
+          data.abs_sub_age_59_years_pct +
+          data.abs_sub_age_1014_years_pct
+        this.suburbData[key].seniorDependencyRatio =
+          data.abs_sub_age_6569_years_pct +
+          data.abs_sub_age_7074_years_pct +
+          data.abs_sub_age_7579_years_pct +
+          data.abs_sub_age_8084_years_pct +
+          data.abs_sub_age_85_years_and_over_pct
+        this.suburbData[key].workingAgePopulationRatio =
+          data.abs_sub_age_2024_years_pct +
+          data.abs_sub_age_2529_years_pct +
+          data.abs_sub_age_3034_years_pct +
+          data.abs_sub_age_3539_years_pct +
+          data.abs_sub_age_4044_years_pct +
+          data.abs_sub_age_4549_years_pct +
+          data.abs_sub_age_5054_years_pct
+        this.suburbData[key].religiosityRate =
+          1 -
+          data.abs_sub_religious_affiliation_top_responses_no_religion_so_described_pct
+        this.suburbData[key].culturalDiversity =
+          1 -
+          ((data.abs_sub_country_of_birth_top_responses_australia_pct || 0) **
+            2 +
+            (data.abs_sub_country_of_birth_top_responses_england_pct || 0) **
+              2 +
+            (data.abs_sub_country_of_birth_top_responses_vietnam_pct || 0) **
+              2 +
+            (data.abs_sub_country_of_birth_top_responses_india_pct || 0) ** 2 +
+            (data.abs_sub_country_of_birth_top_responses_myanmar_pct || 0) ** 2)
+        this.suburbData[key].marriageRate =
+          data.abs_sub_registered_marital_status_married_pct +
+          data.abs_sub_social_marital_status_registered_marriage_pct
       })
     },
 
@@ -709,15 +838,24 @@ export default {
 
       const suburbValues = Object.values(filteredData)
         .map((d) => d[featureKey])
-        .filter((value) => value !== undefined)
+        .filter((value) => value !== undefined && !Number.isNaN(value))
 
       const min = Math.min(...suburbValues)
       const max = Math.max(...suburbValues)
       const avg = suburbValues.reduce((a, b) => a + b, 0) / suburbValues.length
 
       const totalSuburbs = Object.keys(featureRanks).length
-      const minColor = '#cce5ff'
-      const maxColor = '#004085'
+
+      let minColor = '#cce5ff'
+      let maxColor = '#004085'
+
+      const predefinedFeature = this.predefinedFeatures.find(
+        (feature) => feature.key === featureKey
+      )
+      if (predefinedFeature) {
+        minColor = predefinedFeature.minColor
+        maxColor = predefinedFeature.maxColor
+      }
 
       const getColor = (percentile) => {
         const valueRatio = percentile / 100
