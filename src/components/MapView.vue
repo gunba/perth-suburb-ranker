@@ -1,3 +1,5 @@
+<!-- eslint-disable vuejs-accessibility/click-events-have-key-events -->
+
 <template>
   <div id="app">
     <div id="sidebar" class="p-3 transition">
@@ -65,6 +67,36 @@
           <span>{{ maxPopulation }}</span>
         </div>
       </div>
+      <div v-if="outliers.length" class="outliers-container mt-3">
+        <h5 :title="fullFeatureName">{{ shortFeatureName }}</h5>
+        <div>
+          <strong>Top 10</strong>
+          <div
+            v-for="outlier in top10"
+            :key="outlier.name"
+            :style="{ color: getRankColorByPercentile(outlier.percentile) }"
+            @click="selectSuburb(outlier.name)"
+          >
+            {{ outlier.name }} - #{{ outlier.rank }} ({{
+              formatValue(outlier.value)
+            }})
+          </div>
+        </div>
+        <br />
+        <div>
+          <strong>Bottom 10</strong>
+          <div
+            v-for="outlier in bottom10"
+            :key="outlier.name"
+            :style="{ color: getRankColorByPercentile(outlier.percentile) }"
+            @click="selectSuburb(outlier.name)"
+          >
+            {{ outlier.name }} - #{{ outlier.rank }} ({{
+              formatValue(outlier.value)
+            }})
+          </div>
+        </div>
+      </div>
     </div>
     <div id="map-container"></div>
     <div v-if="selectedSuburbDetails" id="suburb-control" class="info legend">
@@ -82,7 +114,6 @@
         -
         <span :title="feature.key">{{ formatFeatureKey(feature.key) }}</span>
         - {{ formatValue(feature.value) }}
-        <!-- Use formatValue here -->
       </div>
     </div>
   </div>
@@ -354,6 +385,34 @@ path.leaflet-interactive:focus {
   -ms-overflow-style: none; /* for Internet Explorer and Edge */
   scrollbar-width: none; /* for Firefox */
 }
+
+.outliers-container {
+  background: #495057;
+  border-radius: 10px;
+  padding: 1px;
+  max-height: 75%; /* limit height to keep it manageable */
+  overflow-y: auto; /* allow scrolling if content overflows */
+  margin-top: 20px; /* add margin at the top */
+  color: #f8f9fa; /* consistent text color */
+  font:
+    12px/14px 'Roboto',
+    sans-serif;
+}
+
+.outliers-container h5 {
+  margin-bottom: 10px;
+  font-weight: bold;
+  font-size: 14px;
+  color: #f8f9fa;
+}
+
+.outliers-container div {
+  cursor: pointer;
+}
+
+.outliers-container div:hover {
+  text-decoration: underline;
+}
 </style>
 
 <script>
@@ -377,7 +436,7 @@ export default {
       predefinedFeatures: [
         { key: 'crimePerCapita', label: 'Crime per capita' },
         { key: 'populationDensity', label: 'Population density' },
-        { key: 'medianIncome', label: 'Median income' },
+        { key: 'medianIncome', label: 'Median income / month' },
       ],
       featureRanks: {},
       minPopulation: 0,
@@ -389,11 +448,58 @@ export default {
   mounted() {
     this.loadZipData()
   },
+
   computed: {
     sortedFeatures() {
       return this.selectedSuburbDetails ? this.selectedSuburbDetails.ranks : []
     },
+
+    outliers() {
+      if (!this.selectedFeature && !this.selectedDynamicFeature) return []
+
+      const featureKey = this.selectedFeature || this.selectedDynamicFeature
+      const filteredData = this.filterSuburbsByPopulation()
+      const featureRanks = this.calculateRanks(featureKey, filteredData)
+
+      const rankedSuburbs = Object.entries(featureRanks)
+        .map(([name, rank]) => {
+          const suburb = filteredData[name]
+          return {
+            name,
+            rank,
+            value: suburb[featureKey],
+            percentile:
+              ((Object.keys(featureRanks).length - rank + 1) /
+                Object.keys(featureRanks).length) *
+              100,
+          }
+        })
+        .sort((a, b) => a.rank - b.rank)
+
+      return rankedSuburbs
+    },
+
+    top10() {
+      return this.outliers.slice(0, 10)
+    },
+
+    bottom10() {
+      return this.outliers.slice(-10)
+    },
+
+    fullFeatureName() {
+      const featureKey = this.selectedFeature || this.selectedDynamicFeature
+      return featureKey ? this.getFeatureLabel(featureKey) : ''
+    },
+
+    shortFeatureName() {
+      const featureKey = this.selectedFeature || this.selectedDynamicFeature
+      return featureKey
+        ? this.formatFeatureKey(this.getFeatureLabel(featureKey))
+        : ''
+    },
   },
+
   methods: {
     async loadZipData() {
       const response = await fetch('data.zip')
@@ -783,7 +889,7 @@ export default {
       if (percentile >= 75) return '#a335ee'
       if (percentile >= 50) return '#0070ff'
       if (percentile >= 25) return '#1eff00'
-      return '#666'
+      return '#AAA'
     },
 
     calculateMaxPopulation() {
@@ -842,6 +948,15 @@ export default {
       const maxLength = 40
       if (key.length <= maxLength) return key
       return `...${key.slice(-maxLength + 3)}` // Keeping the last 37 characters + "..."
+    },
+
+    selectSuburb(suburbName) {
+      const selectedLayer = this.geojsonLayer
+        .getLayers()
+        .find((layer) => layer.feature.properties.name === suburbName)
+      if (selectedLayer) {
+        this.onSuburbClick({ target: selectedLayer })
+      }
     },
   },
 }
