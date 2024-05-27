@@ -67,6 +67,24 @@
       </div>
     </div>
     <div id="map-container"></div>
+    <div v-if="selectedSuburbDetails" id="suburb-control" class="info legend">
+      <button type="button" class="close-btn" @click="clearSelectedSuburb">
+        X
+      </button>
+      <div>
+        <strong>{{ selectedSuburbDetails.name }}</strong>
+      </div>
+      <i>Mouse over feature for full name</i>
+      <div v-for="(feature, index) in sortedFeatures" :key="index">
+        <span :style="{ color: getRankColorByPercentile(feature.percentile) }">
+          #{{ feature.rank }}
+        </span>
+        -
+        <span :title="feature.key">{{ formatFeatureKey(feature.key) }}</span>
+        - {{ formatValue(feature.value) }}
+        <!-- Use formatValue here -->
+      </div>
+    </div>
   </div>
 </template>
 
@@ -240,7 +258,7 @@ path.leaflet-interactive:focus {
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 230px;
+  min-width: 280px;
   min-height: 52px;
 }
 
@@ -294,6 +312,48 @@ path.leaflet-interactive:focus {
 .transition {
   transition: all 0.3s ease;
 }
+
+#suburb-control {
+  position: absolute;
+  top: 120px;
+  left: 320px;
+  background: #495057;
+  padding: 10px;
+  font:
+    12px/14px 'Roboto',
+    sans-serif; /* Adjusted font size */
+  border-radius: 10px;
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 340px; /* Set maximum width */
+  overflow-wrap: break-word;
+  overflow-y: auto; /* enable vertical scrolling */
+  max-height: 400px; /* set a maximum height */
+}
+
+#suburb-control .close-btn {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background: none;
+  border: none;
+  color: #f8f9fa;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+/* Hide the scrollbar */
+#suburb-control::-webkit-scrollbar {
+  display: none; /* for Chrome, Safari, and Opera */
+}
+
+#suburb-control {
+  -ms-overflow-style: none; /* for Internet Explorer and Edge */
+  scrollbar-width: none; /* for Firefox */
+}
 </style>
 
 <script>
@@ -319,16 +379,21 @@ export default {
         { key: 'populationDensity', label: 'Population density' },
         { key: 'medianIncome', label: 'Median income' },
       ],
-      featureRanks: {}, // Added to store precomputed ranks
+      featureRanks: {},
       minPopulation: 0,
       maxPopulation: 0,
+      selectedSuburbDetails: null,
     }
   },
 
   mounted() {
     this.loadZipData()
   },
-
+  computed: {
+    sortedFeatures() {
+      return this.selectedSuburbDetails ? this.selectedSuburbDetails.ranks : []
+    },
+  },
   methods: {
     async loadZipData() {
       const response = await fetch('data.zip')
@@ -338,13 +403,12 @@ export default {
       const suburbDataFile = await zip.file('suburb_data.json').async('string')
       this.suburbData = JSON.parse(suburbDataFile)
 
-      // Exclude Kings Park
       delete this.suburbData['Kings Park']
 
       this.calculatePredefinedFeatures()
       this.populateFeatureLabels()
-      this.precomputeFeatureRanks() // Precompute ranks
-      this.calculateMaxPopulation() // Calculate max population for the slider
+      this.precomputeFeatureRanks()
+      this.calculateMaxPopulation()
       this.initMap()
     },
 
@@ -419,8 +483,9 @@ export default {
       }
 
       layer.setStyle({ color: 'red', weight: 5 })
-
       this.selectedSuburb = layer
+      map.setView(layer.getBounds().getCenter(), 13)
+      this.displaySuburbDetails(layer.feature.properties.name)
     },
 
     onSuburbMouseover(e) {
@@ -463,7 +528,8 @@ export default {
     },
 
     formatValue(value) {
-      if (value === null || Number.isNaN(value)) return 'N/A'
+      if (value === null || Number.isNaN(value) || typeof value !== 'number')
+        return 'N/A'
       if (value >= 1000) return value.toFixed(0)
       if (value >= 1) return value.toFixed(2)
       return value.toFixed(4)
@@ -488,7 +554,6 @@ export default {
         return acc
       }, {})
 
-      // Add dynamic features if needed
       Object.keys(this.suburbData[Object.keys(this.suburbData)[0]]).forEach(
         (key) => {
           if (!this.featureRanks[key]) {
@@ -545,8 +610,8 @@ export default {
       const avg = suburbValues.reduce((a, b) => a + b, 0) / suburbValues.length
 
       const totalSuburbs = Object.keys(featureRanks).length
-      const minColor = '#cce5ff' // Light color
-      const maxColor = '#004085' // Dark color
+      const minColor = '#cce5ff'
+      const maxColor = '#004085'
 
       const getColor = (percentile) => {
         const valueRatio = percentile / 100
@@ -613,11 +678,24 @@ export default {
     },
 
     filterByPopulation() {
+      if (
+        this.selectedSuburb &&
+        !this.isSuburbInFilteredData(
+          this.selectedSuburb.feature.properties.name
+        )
+      ) {
+        this.clearSelectedSuburb()
+      }
       if (this.selectedFeature) {
         this.updateFeatureDisplay(this.selectedFeature)
       } else if (this.selectedDynamicFeature) {
         this.updateFeatureDisplay(this.selectedDynamicFeature)
       }
+    },
+
+    isSuburbInFilteredData(suburbName) {
+      const filteredData = this.filterSuburbsByPopulation()
+      return filteredData[suburbName] !== undefined
     },
 
     updateLegend(
@@ -695,19 +773,75 @@ export default {
     getRankColor(rank) {
       const totalRanks = Object.keys(this.suburbData).length
       const percentile = ((totalRanks - rank + 1) / totalRanks) * 100
-      if (percentile === 100) return '#e5cc80' // 100 percentile
-      if (percentile >= 99) return '#e268a8' // Sub 100 percentile
-      if (percentile >= 95) return '#ff8000' // Sub 99 percentile
-      if (percentile >= 75) return '#a335ee' // Sub 95 percentile
-      if (percentile >= 50) return '#0070ff' // Sub 75 percentile
-      if (percentile >= 25) return '#1eff00' // Sub 50 percentile
-      return '#666' // Sub 25 percentile
+      return this.getRankColorByPercentile(percentile)
+    },
+
+    getRankColorByPercentile(percentile) {
+      if (percentile === 100) return '#e5cc80'
+      if (percentile >= 99) return '#e268a8'
+      if (percentile >= 95) return '#ff8000'
+      if (percentile >= 75) return '#a335ee'
+      if (percentile >= 50) return '#0070ff'
+      if (percentile >= 25) return '#1eff00'
+      return '#666'
     },
 
     calculateMaxPopulation() {
       this.maxPopulation = Math.max(
         ...Object.values(this.suburbData).map((d) => d.abs_people)
       )
+    },
+
+    displaySuburbDetails(suburbName) {
+      const suburbData = this.suburbData[suburbName]
+      const filteredData = this.filterSuburbsByPopulation()
+      const unwantedKeys = ['abs_coordinates', 'reiwa_local_government']
+
+      const suburbKeys = Object.keys(suburbData).filter(
+        (key) => !unwantedKeys.includes(key)
+      )
+
+      const ranks = suburbKeys
+        .map((key) => {
+          const value = suburbData[key]
+          const rank = this.featureRanks[key]
+            ? this.featureRanks[key][suburbName]
+            : undefined
+          const filteredDataLength = Object.keys(filteredData).length
+
+          const percentile =
+            rank !== undefined
+              ? ((filteredDataLength - rank + 1) / filteredDataLength) * 100
+              : undefined
+
+          return {
+            key,
+            value,
+            rank,
+            percentile,
+          }
+        })
+        .filter((feature) => feature.rank !== undefined)
+        .sort((a, b) => a.rank - b.rank)
+
+      this.selectedSuburbDetails = {
+        name: suburbName,
+        ranks,
+      }
+    },
+
+    clearSelectedSuburb() {
+      if (this.selectedSuburb) {
+        this.selectedSuburb.setStyle({ color: '', weight: 0 })
+      }
+      this.selectedSuburb = null
+      this.selectedSuburbDetails = null
+    },
+
+    formatFeatureKey(key) {
+      const maxLength = 40
+      if (key.length <= maxLength) return key
+      return `...${key.slice(-maxLength + 3)}` // Keeping the last 37 characters + "..."
     },
   },
 }
