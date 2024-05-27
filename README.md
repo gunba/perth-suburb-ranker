@@ -1,4 +1,4 @@
-![image](https://github.com/gunba/perth-suburb-ranker/assets/11908184/ee9832af-0049-4e72-9090-07a425f58fe8)
+![image](https://github.com/gunba/perth-suburb-ranker/assets/11908184/182bb3e8-d514-4e7b-95ad-16d2769fcb26)
 
 # vue-leaflet-docker
 
