@@ -1,4 +1,4 @@
-# [Perth Suburb Ranker](http://psr.gunba.org)
+# [Perth Suburb Ranker](https://perth-suburb-ranker.vercel.app/)
 
 ![image](https://github.com/gunba/perth-suburb-ranker/assets/11908184/04411be8-9b0f-4260-9db6-546d950219d9)
 
@@ -45,5 +45,5 @@ Welcome to the **Perth Suburb Ranker**! This project is designed to provide a co
 
 ## Try It Yourself
 
-You can experience the Perth Suburb Ranker firsthand by visiting: [psr.gunba.org](http://psr.gunba.org)
+You can experience the Perth Suburb Ranker firsthand by visiting: [https://perth-suburb-ranker.vercel.app/](https://perth-suburb-ranker.vercel.app/)
 
